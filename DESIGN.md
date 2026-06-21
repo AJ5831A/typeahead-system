@@ -261,6 +261,20 @@ purely to make the hashing observable for the demo and the report.
 4. On the next flush trigger, the buffer aggregates and bulk-writes to Postgres.
 5. Affected cache entries expire by TTL and are recomputed on the next miss.
 
+## Packaging
+
+The whole system is containerized so a marker can run it with one command. The
+app (Node + the server) and Postgres are separate services in `docker-compose`,
+connected over the compose network; the app reads `DATABASE_URL` from its
+environment rather than hard-coding a host, which is what lets the same code run
+against `localhost:5433` on a dev machine and `postgres:5432` inside the network
+with no change. Dataset loading is a third, one-off service (`ingest`) behind a
+compose profile so it doesn't run on every boot — it mounts the dataset file,
+loads it, and exits. The app creates its table on startup, so the stack comes up
+cleanly even before any data is loaded. This mirrors the logical layering of the
+design: a stateless app process, a stateful database, and a batch loader, each in
+its own container.
+
 ## What changes at real scale
 
 Most of the distribution here is pedagogical, and I'd rather say so than pretend a

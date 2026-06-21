@@ -28,7 +28,10 @@ async function main(): Promise<void> {
       file: { type: "string" },
       db: {
         type: "string",
-        default: "postgres://typeahead:typeahead@localhost:5433/typeahead",
+        // env override lets the same command run on the host or inside a container
+        default:
+          process.env.DATABASE_URL ??
+          "postgres://typeahead:typeahead@localhost:5433/typeahead",
       },
     },
   });

@@ -41,6 +41,8 @@ const CONFIG = {
 
 async function main(): Promise<void> {
   const store = await Store.connect(CONFIG.connectionString);
+  // make sure the table exists, so a fresh container can boot before any ingest
+  await store.initSchema();
 
   // build the trie from the durable table
   const trie = new Trie(CONFIG.topK);

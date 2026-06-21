@@ -10,6 +10,43 @@ services:
       - "5433:5432"
     volumes:
       - pgdata:/var/lib/postgresql/data
+    healthcheck:
+      # the app waits on this before connecting
+      test: ["CMD-SHELL", "pg_isready -U typeahead -d typeahead"]
+      interval: 3s
+      timeout: 3s
+      retries: 10
+
+  app:
+    build: .
+    environment:
+      # talk to the postgres service over the compose network, not localhost
+      DATABASE_URL: postgres://typeahead:typeahead@postgres:5432/typeahead
+      PORT: "8080"
+    ports:
+      - "8080:8080"
+    depends_on:
+      postgres:
+        condition: service_healthy
+    restart: unless-stopped
+
+  # one-off dataset loader. Not started by `docker compose up` (it's behind a
+  # profile). Put the AOL .txt in this directory, then run:
+  #     AOL_FILE=user-ct-test-collection-02.txt docker compose run --rm ingest
+  ingest:
+    build: .
+    profiles: ["tools"]
+    environment:
+      DATABASE_URL: postgres://typeahead:typeahead@postgres:5432/typeahead
+      AOL_FILE: ${AOL_FILE:-user-ct-test-collection-02.txt}
+    volumes:
+      # mount this directory read-only so the loader can see the dataset file
+      - ./:/data:ro
+    # $$ escapes compose interpolation so the container shell expands AOL_FILE
+    command: ["sh", "-c", "npm run ingest -- --file=/data/$${AOL_FILE}"]
+    depends_on:
+      postgres:
+        condition: service_healthy
 
 volumes:
   pgdata:

@@ -8,7 +8,8 @@ of truth. A recency-aware "trending" mode boosts recently-searched queries, and
 search-count writes are batched so the database never sees a write per keystroke.
 
 Written in **TypeScript** on Node.js (Express + node-postgres). The frontend is a
-single static page served by the same process.
+single static page served by the same process. The whole stack — app, Postgres,
+and the dataset loader — is containerized and runs with `docker compose up`.
 
 ## Features
 
@@ -90,63 +91,73 @@ The full reasoning is in [DESIGN.md](DESIGN.md); measured numbers are in
 (every keystroke) vastly outnumber writes (submissions), so reads are made nearly
 free and writes are deferred and batched.
 
-## Setup
+## Setup (Docker — recommended)
 
-Requirements: **Node 20+**, **Docker** (for Postgres), and the AOL query dataset.
+Requirements: **Docker** and the AOL query dataset. Nothing else — Node, Postgres,
+and all dependencies live in containers.
 
-### 1. Install dependencies
-
-```
-npm install
-```
-
-### 2. Start Postgres
-
-```
-docker compose up -d
-```
-
-Postgres listens on host port **5433** (not 5432) to avoid colliding with any
-local Postgres. The default connection string in the code already uses 5433; you
-can override it with `DATABASE_URL`.
-
-### 3. Get the dataset
+### 1. Get the dataset
 
 This uses the AOL query log (Kaggle: "AOL User Session Collection"). Download and
-unzip it; you'll get tab-separated files named `user-ct-test-collection-NN.txt`.
+unzip it into this directory; you'll get tab-separated files named
+`user-ct-test-collection-NN.txt`.
 
 The dataset is **not** committed — it's large and, given the AOL log's history, not
 ours to redistribute. Ingestion keeps only the query text; every user-identifying
 column (user id, timestamps, clicked URLs) is discarded.
 
-### 4. Ingest
+### 2. Start the stack
 
 ```
-npm run ingest -- --file=user-ct-test-collection-02.txt
+docker compose up -d --build
 ```
 
-This reads the file, normalizes queries (lowercase, trim, drop empty/`-`), tallies
-counts in memory, and bulk-loads `(query, count)` into Postgres. One file yields
-~1.24M unique queries. (Counting note: every appearance of a query counts toward
-its popularity — a popularity proxy, not a strict event count. See DESIGN.md.)
+This builds the app image and starts two containers: `postgres` (durable store,
+host port **5433**) and `app` (the server, port **8080**). The app waits for
+Postgres to be healthy, creates the table if needed, and starts serving — even
+with an empty database, so this step never fails on a fresh machine.
 
-### 5. Run the server
+### 3. Load the dataset
+
+A one-off `ingest` container (behind a compose profile, so it doesn't run on every
+`up`) reads the file and bulk-loads `(query, count)` into Postgres:
 
 ```
-npm run server
+AOL_FILE=user-ct-test-collection-02.txt docker compose run --rm ingest
+docker compose restart app          # rebuild the trie from the loaded data
 ```
 
-It streams Postgres into the trie at startup (~15s for the full dataset), then
-serves on **:8080**. The server runs with a raised Node heap
-(`--max-old-space-size=4096`) because a trie over 1.24M queries is millions of
-nodes — see DESIGN.md for the memory notes.
+Ingestion normalizes queries (lowercase, trim, drop empty/`-`), aggregates counts
+in memory, and bulk-loads them. One file yields ~1.24M unique queries. (Counting
+note: every appearance of a query counts toward its popularity — a popularity
+proxy, not a strict event count. See DESIGN.md.) The trie is built once at startup,
+so the app is restarted to pick up freshly-loaded data.
 
-### 6. Open the UI
+### 4. Open the UI
 
 Visit **http://localhost:8080/**. Type a prefix (`goog`, `map`, `ebay`), use the
 arrow keys to navigate, Enter or the Search button to submit. The panels show what
 each request did: latency, cache hit/miss, owning node, and live write-buffer
 stats.
+
+To stop: `docker compose down` (add `-v` to also wipe the database volume).
+
+## Setup (local, without Docker for the app)
+
+If you'd rather run the app on the host (e.g. for development), you still need
+Postgres — the easiest way is the container:
+
+```
+npm install
+docker compose up -d postgres                                   # just the DB
+npm run ingest -- --file=user-ct-test-collection-02.txt         # uses localhost:5433
+npm run server                                                  # serves on :8080
+```
+
+The server runs with a raised Node heap (`--max-old-space-size=4096`) because a
+trie over 1.24M queries is millions of nodes — see DESIGN.md for the memory notes.
+The connection string defaults to `localhost:5433` and is overridable via
+`DATABASE_URL`.
 
 ## API
 
@@ -180,7 +191,8 @@ curl "http://localhost:8080/cache/debug?prefix=goog"
 ### Consistent hashing
 
 ```
-npm run ringtest
+docker compose run --rm app npm run ringtest    # in a container
+# or, running locally:  npm run ringtest
 ```
 
 Prints the owner of each sample prefix with 3 nodes, then adds a 4th and reports
@@ -225,6 +237,8 @@ web/
   index.html       frontend
 scripts/
   benchmark.sh     performance measurement
+Dockerfile         app image (server / ingest / ringtest)
+docker-compose.yml postgres + app + one-off ingest job
 ```
 
 ## Notes and trade-offs
