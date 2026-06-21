@@ -1,0 +1,15 @@
+services:
+  postgres:
+    image: postgres:16
+    environment:
+      POSTGRES_USER: typeahead
+      POSTGRES_PASSWORD: typeahead
+      POSTGRES_DB: typeahead
+    ports:
+      # host 5433 -> container 5432, so a local Postgres on 5432 won't clash
+      - "5433:5432"
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+
+volumes:
+  pgdata:

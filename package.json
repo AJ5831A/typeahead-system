@@ -1,0 +1,27 @@
+{
+  "name": "search-typeahead",
+  "version": "1.0.0",
+  "description": "A read-optimized search typeahead service: trie + distributed cache + batched writes",
+  "type": "module",
+  "engines": {
+    "node": ">=20"
+  },
+  "scripts": {
+    "server": "node --max-old-space-size=4096 --import tsx src/server.ts",
+    "ingest": "node --max-old-space-size=4096 --import tsx src/ingest.ts",
+    "ringtest": "tsx src/ringtest.ts",
+    "typecheck": "tsc --noEmit",
+    "build": "tsc"
+  },
+  "dependencies": {
+    "express": "^4.21.2",
+    "pg": "^8.13.1"
+  },
+  "devDependencies": {
+    "@types/express": "^4.17.21",
+    "@types/node": "^22.10.5",
+    "@types/pg": "^8.11.10",
+    "tsx": "^4.19.2",
+    "typescript": "^5.7.2"
+  }
+}

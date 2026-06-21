@@ -1,0 +1,323 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Search Typeahead</title>
+  <style>
+    :root {
+      --bg: #0f1115;
+      --surface: #181b22;
+      --surface-2: #1f232c;
+      --border: #2a2f3a;
+      --text: #e8eaed;
+      --muted: #8b919e;
+      --accent: #5b9dff;
+      --accent-dim: #2a3a55;
+      --hit: #4ec9a0;
+      --miss: #e07a5f;
+      --mono: ui-monospace, "SF Mono", "Cascadia Code", Menlo, monospace;
+      --sans: system-ui, -apple-system, "Segoe UI", sans-serif;
+    }
+
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+
+    body {
+      background: var(--bg);
+      color: var(--text);
+      font-family: var(--sans);
+      line-height: 1.5;
+      min-height: 100vh;
+      padding: 48px 24px;
+    }
+
+    .wrap { max-width: 880px; margin: 0 auto; }
+
+    header { margin-bottom: 32px; }
+    .tag {
+      font-family: var(--mono);
+      font-size: 11px;
+      letter-spacing: 0.15em;
+      text-transform: uppercase;
+      color: var(--accent);
+      margin-bottom: 10px;
+    }
+    h1 { font-size: 28px; font-weight: 600; letter-spacing: -0.01em; }
+    header p { color: var(--muted); margin-top: 6px; font-size: 15px; }
+
+    /* search */
+    .search { position: relative; }
+    .search-row { display: flex; gap: 8px; }
+    #query {
+      flex: 1;
+      font-size: 18px;
+      padding: 14px 16px;
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: 10px;
+      color: var(--text);
+      outline: none;
+      transition: border-color 0.12s, box-shadow 0.12s;
+    }
+    #query:focus { border-color: var(--accent); box-shadow: 0 0 0 3px var(--accent-dim); }
+    #query::placeholder { color: var(--muted); }
+    #submit {
+      padding: 0 24px;
+      font-size: 15px;
+      font-weight: 600;
+      background: var(--accent);
+      color: #0b0d10;
+      border: none;
+      border-radius: 10px;
+      cursor: pointer;
+    }
+    #submit:hover { filter: brightness(1.1); }
+
+    .toggle { display: flex; gap: 6px; margin-top: 12px; font-family: var(--mono); font-size: 12px; }
+    .toggle button {
+      background: var(--surface);
+      color: var(--muted);
+      border: 1px solid var(--border);
+      border-radius: 16px;
+      padding: 5px 14px;
+      cursor: pointer;
+    }
+    .toggle button.on { color: var(--text); border-color: var(--accent); background: var(--accent-dim); }
+
+    /* dropdown */
+    .suggest {
+      position: absolute; left: 0; right: 0; top: 58px;
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: 10px;
+      overflow: hidden;
+      z-index: 10;
+      display: none;
+      box-shadow: 0 16px 40px rgba(0, 0, 0, 0.4);
+    }
+    .suggest.open { display: block; }
+    .row {
+      display: flex; justify-content: space-between; align-items: center;
+      padding: 11px 16px; cursor: pointer; border-bottom: 1px solid var(--border);
+    }
+    .row:last-child { border-bottom: none; }
+    .row.sel, .row:hover { background: var(--surface-2); }
+    .row .q { font-size: 15px; }
+    .row .c { font-family: var(--mono); font-size: 12px; color: var(--muted); }
+    .note { padding: 13px 16px; color: var(--muted); font-size: 14px; }
+
+    #response { margin-top: 16px; font-family: var(--mono); font-size: 13px; color: var(--muted); min-height: 18px; }
+    #response b { color: var(--hit); }
+
+    /* panels */
+    .cols { display: grid; grid-template-columns: 1fr 1fr; gap: 20px; margin-top: 40px; }
+    @media (max-width: 640px) { .cols { grid-template-columns: 1fr; } }
+    .card { background: var(--surface); border: 1px solid var(--border); border-radius: 12px; padding: 18px 20px; }
+    .card h2 {
+      font-family: var(--mono); font-size: 11px; letter-spacing: 0.12em;
+      text-transform: uppercase; color: var(--muted);
+      padding-bottom: 10px; margin-bottom: 6px; border-bottom: 1px solid var(--border);
+    }
+    .card h2:not(:first-child) { margin-top: 22px; }
+    .kv { display: flex; justify-content: space-between; padding: 6px 0; font-size: 14px; }
+    .kv .k { color: var(--muted); }
+    .kv .v { font-family: var(--mono); }
+    .pill { padding: 1px 8px; border-radius: 5px; font-size: 12px; font-weight: 600; }
+    .pill.hit { background: rgba(78, 201, 160, 0.15); color: var(--hit); }
+    .pill.miss { background: rgba(224, 122, 95, 0.15); color: var(--miss); }
+
+    .trend { display: flex; gap: 12px; align-items: baseline; padding: 6px 0; font-size: 14px; }
+    .trend .n { font-family: var(--mono); color: var(--accent); width: 18px; }
+  </style>
+</head>
+
+<body>
+  <div class="wrap">
+    <header>
+      <div class="tag">search typeahead</div>
+      <h1>Type to search</h1>
+      <p>Suggestions come from a distributed cache in front of an in-memory trie. The panels show what each request did.</p>
+    </header>
+
+    <div class="search">
+      <div class="search-row">
+        <input id="query" type="text" placeholder="Try goog, map, ebay…" autocomplete="off" autofocus />
+        <button id="submit">Search</button>
+      </div>
+      <div class="toggle">
+        <button data-mode="basic" class="on">basic · by count</button>
+        <button data-mode="trending">trending · recency-aware</button>
+      </div>
+      <div class="suggest" id="suggest"></div>
+    </div>
+
+    <div id="response"></div>
+
+    <div class="cols">
+      <div class="card">
+        <h2>last request</h2>
+        <div class="kv"><span class="k">prefix</span><span class="v" id="m-prefix">—</span></div>
+        <div class="kv"><span class="k">latency</span><span class="v" id="m-latency">—</span></div>
+        <div class="kv"><span class="k">cache</span><span class="v" id="m-cache">—</span></div>
+        <div class="kv"><span class="k">owning node</span><span class="v" id="m-node">—</span></div>
+        <div class="kv"><span class="k">mode</span><span class="v" id="m-mode">basic</span></div>
+        <h2>write buffer</h2>
+        <div class="kv"><span class="k">searches received</span><span class="v" id="m-recv">0</span></div>
+        <div class="kv"><span class="k">db flushes</span><span class="v" id="m-flush">0</span></div>
+        <div class="kv"><span class="k">rows written</span><span class="v" id="m-rows">0</span></div>
+        <div class="kv"><span class="k">write reduction</span><span class="v" id="m-reduce">—</span></div>
+      </div>
+
+      <div class="card">
+        <h2>trending now</h2>
+        <div id="trending"><div class="note">Submit searches to watch trends rise.</div></div>
+      </div>
+    </div>
+  </div>
+
+  <script>
+    const el = (id) => document.getElementById(id);
+    let mode = "basic";
+    let suggestions = [];
+    let selected = -1;
+
+    // debounce so we don't call the backend on every keystroke
+    function debounce(fn, ms) {
+      let t;
+      return (...a) => { clearTimeout(t); t = setTimeout(() => fn(...a), ms); };
+    }
+
+    async function loadSuggestions(prefix) {
+      if (!prefix) { closeSuggest(); el("m-prefix").textContent = "—"; return; }
+
+      const qs = `/suggest?q=${encodeURIComponent(prefix)}` + (mode === "trending" ? "&mode=trending" : "");
+      const t0 = performance.now();
+      let data;
+      try {
+        const res = await fetch(qs);
+        if (!res.ok) throw new Error(res.status);
+        data = await res.json();
+      } catch {
+        el("suggest").innerHTML = '<div class="note">Server unreachable — is it running on :8080?</div>';
+        el("suggest").classList.add("open");
+        return;
+      }
+      const ms = (performance.now() - t0).toFixed(1);
+
+      suggestions = data;
+      drawSuggestions(data);
+      el("m-prefix").textContent = prefix;
+      el("m-latency").textContent = ms + " ms";
+      loadCacheDebug(prefix);
+    }
+
+    async function loadCacheDebug(prefix) {
+      try {
+        const d = await (await fetch(`/cache/debug?prefix=${encodeURIComponent(prefix)}`)).json();
+        el("m-node").textContent = d.node || "—";
+        el("m-cache").innerHTML = d.hit
+          ? '<span class="pill hit">HIT</span>'
+          : '<span class="pill miss">MISS</span>';
+      } catch { /* non-fatal */ }
+    }
+
+    function drawSuggestions(data) {
+      const box = el("suggest");
+      selected = -1;
+      if (!data || data.length === 0) {
+        box.innerHTML = '<div class="note">No matches for that prefix.</div>';
+        box.classList.add("open");
+        return;
+      }
+      box.innerHTML = data.map((s, i) =>
+        `<div class="row" data-i="${i}"><span class="q">${esc(s.query)}</span><span class="c">${s.count.toLocaleString()}</span></div>`
+      ).join("");
+      box.classList.add("open");
+      box.querySelectorAll(".row").forEach((r) =>
+        r.addEventListener("click", () => runSearch(data[r.dataset.i].query)));
+    }
+
+    function closeSuggest() { el("suggest").classList.remove("open"); }
+
+    async function runSearch(q) {
+      const value = q ?? el("query").value;
+      if (!value.trim()) return;
+      el("query").value = value;
+      closeSuggest();
+
+      try {
+        const res = await fetch("/search", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ query: value }),
+        });
+        const d = await res.json();
+        el("response").innerHTML = `server: <b>${esc(d.message)}</b> — recorded "${esc(value)}"`;
+      } catch {
+        el("response").textContent = "search failed — server unreachable";
+      }
+      refreshBufferStats();
+      refreshTrending();
+    }
+
+    async function refreshBufferStats() {
+      try {
+        const d = await (await fetch("/stats")).json();
+        el("m-recv").textContent = d.searches_received;
+        el("m-flush").textContent = d.db_flushes;
+        el("m-rows").textContent = d.rows_written;
+        if (d.searches_received > 0 && d.rows_written > 0) {
+          el("m-reduce").textContent = (d.searches_received / d.rows_written).toFixed(1) + "× fewer";
+        }
+      } catch { /* non-fatal */ }
+    }
+
+    async function refreshTrending() {
+      const prefix = el("query").value.trim() || "a"; // broad default so the panel isn't empty
+      try {
+        const d = await (await fetch(`/suggest?q=${encodeURIComponent(prefix)}&mode=trending`)).json();
+        const box = el("trending");
+        if (!d || d.length === 0) { box.innerHTML = '<div class="note">No trending data yet.</div>'; return; }
+        box.innerHTML = d.slice(0, 8).map((s, i) =>
+          `<div class="trend"><span class="n">${i + 1}</span><span>${esc(s.query)}</span></div>`).join("");
+      } catch { /* non-fatal */ }
+    }
+
+    function esc(s) {
+      return String(s).replace(/[&<>"']/g, (c) =>
+        ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
+    }
+
+    // keyboard navigation through the dropdown
+    el("query").addEventListener("keydown", (e) => {
+      const rows = el("suggest").querySelectorAll(".row");
+      if (e.key === "ArrowDown") { e.preventDefault(); selected = Math.min(selected + 1, rows.length - 1); paint(rows); }
+      else if (e.key === "ArrowUp") { e.preventDefault(); selected = Math.max(selected - 1, 0); paint(rows); }
+      else if (e.key === "Enter") {
+        if (selected >= 0 && suggestions[selected]) runSearch(suggestions[selected].query);
+        else runSearch();
+      } else if (e.key === "Escape") closeSuggest();
+    });
+    function paint(rows) { rows.forEach((r, i) => r.classList.toggle("sel", i === selected)); }
+
+    // wiring
+    const debounced = debounce((v) => loadSuggestions(v), 150);
+    el("query").addEventListener("input", (e) => debounced(e.target.value.trim()));
+    el("submit").addEventListener("click", () => runSearch());
+    document.querySelectorAll(".toggle button").forEach((b) =>
+      b.addEventListener("click", () => {
+        document.querySelectorAll(".toggle button").forEach((x) => x.classList.remove("on"));
+        b.classList.add("on");
+        mode = b.dataset.mode;
+        el("m-mode").textContent = mode;
+        const v = el("query").value.trim();
+        if (v) loadSuggestions(v);
+      }));
+
+    refreshBufferStats();
+    refreshTrending();
+  </script>
+</body>
+
+</html>
