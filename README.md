@@ -98,8 +98,11 @@ and all dependencies live in containers.
 
 ### 1. Get the dataset
 
-This uses the AOL query log (Kaggle: "AOL User Session Collection"). Download and
-unzip it into this directory; you'll get tab-separated files named
+This uses the AOL query log (Kaggle: "AOL User Session Collection"):
+
+> https://www.kaggle.com/datasets/dineshydv/aol-user-session-collection-500k
+
+Download and unzip it into this directory; you'll get tab-separated files named
 `user-ct-test-collection-NN.txt`.
 
 The dataset is **not** committed — it's large and, given the AOL log's history, not

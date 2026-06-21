@@ -13,10 +13,11 @@ it usually is.
 
 ## Dataset
 
-I used the AOL query log (the "AOL User Session Collection" on Kaggle): roughly
-20 million real search events from ~650k users over three months in 2006. It is
-the largest public corpus of genuine, messy, human-typed search queries, which
-is exactly what a typeahead needs to look real.
+I used the AOL query log (the "AOL User Session Collection" on Kaggle —
+https://www.kaggle.com/datasets/dineshydv/aol-user-session-collection-500k):
+roughly 20 million real search events from ~650k users over three months in
+2006. It is the largest public corpus of genuine, messy, human-typed search
+queries, which is exactly what a typeahead needs to look real.
 
 The raw log is one row per *event* — user id, query text, timestamp, clicked
 URL. The assignment wants a `(query, count)` table, but the log has events, not
